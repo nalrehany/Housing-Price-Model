@@ -1,0 +1,784 @@
+---
+title: "Regression Model for Housig Prices by Nick Al-Rehany"
+---
+
+# Load various libraries for data manipulation, extraction, and visualization
+
+```{r}
+library(tidyverse)
+library(sp)
+library(rgdal)
+library(car)
+library(corrplot)
+library(latticeExtra)
+library(RColorBrewer)
+library(spdep)
+```
+
+# Establish non scientific notation from the beginning for clarity.
+```{r}
+options(scipen=999)
+```
+
+### STEP 1 - Data munging ###
+
+# A) Reading data
+```{r}
+#Read in tract and house value data to hamilton_ctb (hamilton census tract boundaries)
+hamilton_ctb <- readOGR("https://raw.githubusercontent.com/gisUTM/GGR376/master/Lab_1/houseValues.geojson")
+#Read in explanatory variable attributes to hamilton_variables (potenial explanatory variables for house value in hamilton)
+hamilton_variables <- read.csv("C://Users//Nick//Downloads//ham_variables.csv")
+```
+
+```{r}
+#Read geojson as tibble to make data manipulation cleaner and organized
+hamilton_ctb <- as_tibble(hamilton_ctb)
+```
+
+# B) Merging data
+```{r}
+#Use innerjoin to join the tables
+hamiltondata <- inner_join(hamilton_ctb, hamilton_variables, by = "CTUID")
+#if NA value rows are still present, use na.omit() to omit
+hamiltondata <- na.omit(hamiltondata)
+```
+
+
+
+
+# Modify the count variables to create ratios so that counts are not as dependant on tract populations
+```{r}
+hamiltondata <- hamiltondata%>%
+ 
+  #Average number of single detached houses per census tract
+  mutate(psingledetached = single.detached/occupieddwellings)%>% 
+ 
+  #Average number of commuters who drive to work per census tract
+  mutate(pdrivetowork = drivetowork/totalcommuter)%>%
+  
+  #Average number of people with a bachelor degree per census tract
+  mutate(pbachdegree = bachdegree/totaleducated)%>%
+  
+  #Average amount of people in the labour force in management roles per census tract
+  mutate(pmanager = manager/labourforce)%>%
+  
+  #Average amount of houses with 4 or more rooms per census tract
+  mutate(pfourplusrooms = fourplusrooms/occupieddwellings)%>%
+  
+  #Average amount of houses needing major repairs per census tract
+  mutate(prepairs = majorrepairs/occupieddwellings)%>%
+  
+  #Average amount of employed people who work from home per census tract
+  mutate(pworkfromhome = workfromhome/employed)%>%
+  
+  #Eliminate variables used for normalization
+  select(-single.detached, -drivetowork, -bachdegree, -manager, -fourplusrooms, -majorrepairs, -workfromhome, -occupieddwellings, -totalcommuter, -totaleducated, -labourforce, -employed)
+```
+
+# Check for 0 values
+```{r}
+hamiltondata%>%
+  summary
+```
+
+# Current variables to be used:
+
+# avgincome - average income
+# employmentrate - employment rate
+# avgage - average age
+# psingledetached - avg. amount of single detached houses
+# pdrivetowork - avg. amount of people driving to work
+# pbachdegree - avg. amount of people with bachelor degrees
+# pmanager - avg. amount of employed people in management positions
+# pfourplusrooms - avg. amount of houses with 4 or more rooms
+# prepairs - avg. amount of houses needing major repairs
+# pworkfromhome - avg. amount of employed people who work from home
+
+
+
+### STEP 2 - Graphical analysis pre-check to note linear regression ###
+
+# Scatter Plots done using ggplot2()
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = avgincome, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = employmentrate, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = avgage, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = psingledetached, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = pdrivetowork, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = pbachdegree, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = pmanager, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = pfourplusrooms, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = prepairs, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+ggplot(data = hamiltondata, mapping = aes(x = pworkfromhome, y = houseValue))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)
+```
+
+
+#Box plots using ggplot2()
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = avgincome))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = employmentrate))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = avgage))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = psingledetached))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = pdrivetowork))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = pbachdegree))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = pmanager))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = pfourplusrooms))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = prepairs))
+```
+
+```{r}
+ggplot(data = hamiltondata)+
+  geom_boxplot(mapping = aes(x = "", y = pworkfromhome))
+```
+
+
+# View all Histograms using ggplot2
+```{r}
+hamiltondata%>%
+  select(-CTUID)%>%
+  map(hist)
+```
+
+
+# Normality test using the shapiro.test()
+The null hypothesis of this test is that the data are normal.
+```{r}
+hamiltondata%>%
+  select(-CTUID)%>%
+map(shapiro.test)
+```             
+
+
+
+### STEP 3 - Data transformations for skewed data ###
+```{r}
+hamiltondata_trans <- hamiltondata%>%
+  mutate(logValue = log(houseValue+1))%>%
+  mutate(logincome = log(avgincome+1))%>%
+  mutate(logmanager = log(pmanager+1))%>%
+  mutate(logfourplus = log(pfourplusrooms+1))%>%
+  mutate(logrepairs = log(prepairs+1))%>%
+  mutate(logworkfromhome = log(pworkfromhome+1))%>%
+  select(-houseValue, -avgincome, -pmanager, -pfourplusrooms, -prepairs, -pworkfromhome)
+```
+
+
+
+### STEP 4 - Correlation Matrix to view how variables correlate with one another ###
+```{r}
+cor_mat <- cor(hamiltondata_trans%>%
+                 select(-CTUID)) # Exclude as it will not be used in calculations.
+corrplot::corrplot(cor_mat, method = "circle")
+```
+
+
+
+## Using a manual approach to variable selection, logincome (log of average income per census tract) is the strongest predictor variable in correlation to logValue (log of house value). We will being with logincome. 
+
+We have also already satisfied the assumption of positive X variability as we have no negatives in variable data ranges, and the assumption of the number of observations must be greater than number of independent as we have hundreds of rows in the data set and one dependant variable: logValue. ##
+
+
+
+### STEP 5 - Model fitting ###
+
+# Variable Selection
+
+# Model_1
+```{r}
+model_1 <- lm(logValue ~ logincome, data = hamiltondata_trans)
+```
+
+# Observe the model.
+```{r}
+model_1
+```
+
+# Use the summary function to see the Adj.R.Sq
+```{r}
+summary(model_1)
+```
+
+# Check mean of residuals is 0
+```{r}
+mean(model_1$residuals)
+```
+
+#Check homoscedasticity
+```{r}
+plot(model_1)
+```
+
+# Multicollinearity can not be checked with 1 variable
+# Independant and residual correlation can not be checked
+# Normality of residuals can not be checked
+# Spatial autocorrelation of residuals cannot be checked
+
+
+
+# Observations 2, 34, 95, and 162, are noted in the first and third plots
+```{r}
+hamiltondata_trans%>%
+  # Slice the rows
+  slice(c(2, 34, 95, 162))
+```
+
+# Remove these outliers from the plot
+```{r}
+hamilton_sub <- hamiltondata_trans%>%
+  slice(-c(2, 34, 95, 162))
+```
+
+
+# Model_2 - Fit the model with the new data set.
+```{r}
+model_2 <- lm(logValue ~ logincome, hamilton_sub)
+summary(model_2) #adjusted r squared increses by .0249
+```
+
+# Check mean of residuals
+```{r}
+mean(model_2$residuals)
+```
+
+# Plot the graphics to ensure homoscedasticity and no heteroscedasticity with a 2 row and 2 coloumn layout for easy comparison
+```{r}
+par(mfrow=c(2,2)) # set 2 rows and 2 column plot layout
+plot(model_2)
+```
+
+# Multicollinearity can not be checked with 1 variable
+# Independant and residual correlation can not be checked
+# Normality of residuals can not be checked
+# Spatial autocorrelation of residuals cannot be checked
+
+
+
+# Model_3 - Add a second variable to the model: logmanager
+```{r}
+model_3 <- lm(logValue ~ logincome + logmanager, data = hamilton_sub)
+summary(model_3) # The adjusted r squared increases by .0138
+```
+
+# Check for mean of residuals to be 0
+```{r}
+mean(model_3$residuals) # Mean is 0
+```
+
+# Check the homoscedasticity
+```{r}
+par(mfrow=c(2,2)) # Very minor heterscedasticity is added
+plot(model_3) 
+```
+
+# Check multicollinearity
+```{r}
+vif(model_3) # Values are higher than 4, and therefore, there is multicollinearity
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_3$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_3$residuals, hamilton_sub$logmanager) #no correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$logmanager) #not normally distributed
+```
+
+
+
+
+# Model_4 - Subsititute logmanager for pbachdegree
+```{r}
+model_4 <- lm(logValue ~ logincome + pbachdegree, data = hamilton_sub)
+summary(model_4) 
+# Adjusted r squared is lower than model 2 and model 3
+```
+
+# Check for mean of residuals to be 0
+```{r}
+mean(model_4$residuals) # Mean is 0 
+```
+
+# Check homoscedasticity
+```{r}
+par(mfrow=c(2,2)) # Very minor heterscedasticity is added
+plot(model_4) 
+```
+
+# Check Multicollinearity
+```{r}
+vif(model_4) #Values are lower than 4, therefore no introduced multicollinearity
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_4$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_4$residuals, hamilton_sub$pbachdegree) #no correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+```
+
+
+
+
+# Model_5 - Add variable: logfourplus
+```{r}
+model_5 <- lm(logValue ~ logincome + pbachdegree + logfourplus, data = hamilton_sub) 
+summary(model_5) #Adjusted r squared is higher
+```
+
+# Check for mean of residuals to be 0
+```{r}
+mean(model_5$residuals) # Mean is 0
+```
+
+# Homoscedasticty
+```{r}
+par(mfrow=c(2,2)) # Very minor heterscedasticity is added
+plot(model_5)
+```
+
+# Multicollinearity
+```{r}
+vif(model_5) #Values lower than 4
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_5$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_5$residuals, hamilton_sub$pbachdegree) #no correlation
+cor.test(model_5$residuals, hamilton_sub$logfourplus) #no correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+shapiro.test(hamilton_sub$logfourplus) #not normally distributed
+```
+
+
+
+
+# Model_6 - Add variable: employmentrate
+```{r}
+model_6 <- lm(logValue ~ logincome + pbachdegree + logfourplus + employmentrate, data = hamilton_sub)
+summary(model_6) #Reduced adjusted r squared and is not statistically significant.
+```
+    
+# Check for mean of residuals to be 0
+```{r}
+mean(model_6$residuals) # Mean is 0
+```
+
+# Homoscedasticity
+```{r}
+par(mfrow=c(2,2)) # Very minor heterscedasticity is added
+plot(model_6)
+```   
+
+# Multicollinearity 
+```{r}
+vif(model_6) #Although, it does not introduce multicollinearity
+```
+    
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_6$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_6$residuals, hamilton_sub$pbachdegree) #no correlation
+cor.test(model_6$residuals, hamilton_sub$logfourplus) #no correlation
+cor.test(model_6$residuals, hamilton_sub$employmentrate) #no correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+shapiro.test(hamilton_sub$logfourplus) #not normally distributed
+shapiro.test(hamilton_sub$employmentrate) #not normally distributed
+```
+
+
+
+
+# Model_7 - Substitute employmentrate for pdrivetowork
+```{r}
+model_7 <- lm(logValue ~ logincome + pbachdegree + logfourplus + pdrivetowork, data = hamilton_sub)
+summary(model_7) #Reduced adjusted r squared and is not statistically significant
+```
+ 
+# Check for mean of residuals to be 0
+```{r}
+mean(model_7$residuals) #Mean is 0 
+```
+
+# Homoscedasticity
+```{r}
+par(mfrow=c(2,2)) #Very minor heterscedasticity is added
+plot(model_7)
+```   
+
+# Multicollinearity
+```{r}
+vif(model_7) #Introduces multicollinearity
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_6$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_6$residuals, hamilton_sub$pbachdegree) #no correlation
+cor.test(model_6$residuals, hamilton_sub$logfourplus) #no correlation
+cor.test(model_6$residuals, hamilton_sub$pdrivetowork) #presents correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+shapiro.test(hamilton_sub$logfourplus) #not normally distributed
+shapiro.test(hamilton_sub$pdrivetowork) #not normally distributed
+```
+
+
+
+
+# Model_8 - Substitute pdrivetowork for logworkfromhome
+```{r}
+model_8 <- lm(logValue ~ logincome + pbachdegree + logfourplus + logworkfromhome, data = hamilton_sub) #Adjusted r squared is slightly higher but the variable is not statistically significant
+summary(model_8)
+```
+ 
+# Check for mean of residuals to be 0
+```{r}
+mean(model_8$residuals) #Mean is 0
+```
+
+# Homoscedasticity
+```{r}
+par(mfrow=c(2,2)) #No heteroscedasticity is added
+plot(model_8)
+```   
+
+# Multicollinearity
+```{r}
+vif(model_8) #Introduces multicollinearity
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_8$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_8$residuals, hamilton_sub$pbachdegree) #no correlation
+cor.test(model_8$residuals, hamilton_sub$logfourplus) #no correlation
+cor.test(model_8$residuals, hamilton_sub$logworkfromhome) #no correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+shapiro.test(hamilton_sub$logfourplus) #not normally distributed
+shapiro.test(hamilton_sub$logworkfromhome) #not normally distributed
+```
+
+
+
+# Model_9 - Substitute logworkfrom home for psingledetached
+```{r}
+model_9 <- lm(logValue ~ logincome + pbachdegree + logfourplus + psingledetached, data = hamilton_sub)
+summary(model_9) #Increses adjusted r squared and is statistically significant
+```
+
+# Check for mean of residuals to be 0
+```{r}
+mean(model_9$residuals) # mean is 0
+```
+
+# Homoscedasticity
+```{r}
+par(mfrow=c(2,2)) #No heteroscedasticity added
+plot(model_9)
+```   
+
+# Multicollinearity
+```{r}
+vif(model_9) #However, multicollinearity is introduced
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_9$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_9$residuals, hamilton_sub$pbachdegree) #no correlation
+cor.test(model_9$residuals, hamilton_sub$logfourplus) #no correlation
+cor.test(model_9$residuals, hamilton_sub$psingledetached) #presents correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+shapiro.test(hamilton_sub$logfourplus) #not normally distributed
+shapiro.test(hamilton_sub$psingledetached) #not normally distributed
+```
+
+
+
+# Model_10 - Substitute psingledetached for avgage
+```{r}
+model_10 <- lm(logValue ~ logincome + pbachdegree + logfourplus + avgage, data = hamilton_sub)
+summary(model_10) #Increses adjusted r squared and is statistically significant
+```
+
+# Check for mean of residuals to be 0
+```{r}
+mean(model_10$residuals) #Mean is 0 
+```
+
+# Homoscedasticity
+```{r}
+par(mfrow=c(2,2)) #No heteroscedasticity added
+plot(model_10)
+```   
+
+# Multicollinearity
+```{r}
+vif(model_10) #Multicollinearity is introduced
+```
+
+# Independant and residual uncorrelation
+```{r}
+cor.test(model_10$residuals, hamilton_sub$logincome) #no correlation
+cor.test(model_10$residuals, hamilton_sub$pbachdegree) #no correlation
+cor.test(model_10$residuals, hamilton_sub$logfourplus) #no correlation
+cor.test(model_10$residuals, hamilton_sub$avgage) #no correlation
+```
+
+# Normality of residuals
+```{r}
+shapiro.test(hamilton_sub$logincome) #not normally distributed
+shapiro.test(hamilton_sub$pbachdegree) #not normally distributed
+shapiro.test(hamilton_sub$logfourplus) #not normally distributed
+shapiro.test(hamilton_sub$avgage) #normally distributed
+```
+
+
+
+# Continuing with model_5 renamed to value_model
+```{r}
+value_model <- model_5
+```
+
+
+### STEP 6 - Spatial Autocorrelation Assessment ###
+
+#Read data stored in a geoJSON
+```{r}
+hamilton_polygons <- readOGR("https://raw.githubusercontent.com/gisUTM/GGR376/master/Lab_1/houseValues.geojson")
+```
+
+# Create a dataframe with the model residuals and the model input data
+```{r}
+value_model_dataframe <- cbind(hamilton_sub, residuals = value_model$residuals)
+value_model_dataframe
+```
+
+# Join the dataframe with the spdf
+```{r}
+hamilton_spdf <- merge(hamilton_polygons, value_model_dataframe, by.x = "CTUID", all.x = FALSE)
+```
+
+# Map the residuals 
+```{r}
+spplot(hamilton_spdf, "residuals")
+```
+
+# Display colour map to select better colour scheme
+```{r fig.height=7}
+display.brewer.all()
+```
+
+# Create a colour palette to be used in our map with 7 colours (6 breaks)
+```{r}
+col_palette <- brewer.pal(n = 7, name = "PuOr")
+col_palette 
+```
+
+# Generate the map
+```{r}
+spplot(hamilton_spdf, "residuals",
+       col.regions = col_palette, 
+       cuts = 6, 
+       col = "transparent") 
+```
+ 
+
+# Confirm spatial autocorrelation with Moran's I
+
+# First, it is necessary to create a list that represents the shared borders of polygons in order to determine spatial autocorrelation 
+```{r}
+hamilton_nb <- poly2nb(hamilton_spdf)
+```
+
+Plot neighbour connections
+```{r fig.height = 10}
+par(mai=c(0,0,0,0))
+plot(hamilton_spdf)
+plot(hamilton_nb, coordinates(hamilton_spdf), col='red', lwd=2, add=TRUE)
+```
+
+
+# Now we can calculate Moran's I 
+
+# It is necessary to modify the list of boundaries to weights to calculate Morans's I
+```{r}
+hamilton_listw <- nb2listw(hamilton_nb) #Converts neighbourhood list to spatial weights matrix
+```
+
+# Run the two tests for Moran's I
+```{r}
+moran.test(hamilton_spdf$residuals,hamilton_listw)
+moran.mc(hamilton_spdf$residuals, hamilton_listw, 999)
+#Both of these tests prove that there is spatial auto-correlation as they have positive Moran's I values. 
+```
+
+#### STEP 7 - Spatial Autoregressive Modelling ###
+
+# Spatial Lag model
+```{r}
+lag_model = lagsarlm(logValue ~ logincome + pbachdegree + logfourplus,
+                     data = hamilton_spdf, #Point it to dataframe
+                     listw = hamilton_listw) #Point it to weight matrix
+```
+
+# Get more details with the summary function
+```{r}
+summary(lag_model)
+```
+
+# Check the residuals for spatial auto-correlation
+```{r}
+hamilton_spdf$lagResids <- residuals(lag_model)
+moran.mc(hamilton_spdf$lagResids, hamilton_listw, 999)
+```
+
+#### Spatial Error Model
+```{r}
+error_model = errorsarlm(logValue ~ logincome + pbachdegree + logfourplus,
+                     data = hamilton_spdf,
+                     listw = hamilton_listw)
+```
+
+
+```{r}
+summary(error_model)
+```
+
+
+Check the error model residuals for spatial auto-correlation.
+```{r}
+# Add error model residuals to SpatialPolygonDataFrame
+hamilton_spdf$errorResids <- residuals(error_model)
+# Moran's I
+moran.mc(hamilton_spdf$errorResids, hamilton_listw, 999)
+```
+
+# A final plot of the residuals
+```{r}
+spplot(hamilton_spdf, "errorResids",
+       col.regions = col_palette, 
+       cuts = 6, 
+       col = "transparent")
+```
+
+# Lagrange Multiplier diagnostics. This test is used to decide whether to use the error or lag model
+```{r}
+summary(lm.LMtests(model_5, hamilton_listw, test="all"))
+```
+
+# Both models are significant. It is necessary to use theoretical principles in order to decide which model would be most suitable
