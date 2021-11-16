@@ -40,10 +40,10 @@ plot(hamiltondata, 'AvgHousePrice', 'PctWorkFromHome')
 ### Creating dependent and independent variables based on most linearly related independent variables ###
 
 X = hamiltondata[['avgincome', 'PctBachelorDegree', 'PctFourPlusRooms']].values
-Y = hamiltondata.iloc[:, -1].values
+y = hamiltondata.iloc[:, -1].values
 
 print(X)
-print(Y)
+print(y)
 
 imputer = SimpleImputer(missing_values = np.nan, strategy = 'mean') # This is an object of the imputer class. It will help us find that average to infer. 
                          # Instructs to find missing and replace it with mean
@@ -57,11 +57,11 @@ X[:, :] = imputer.transform(X[:,:])
 # z = np.abs(stats.zscore(X))
 # mask = (z < 3).all(axis=1)
 # X = X[mask]
-# Y = Y[mask]
+# y = y[mask]
 
 # ## Splitting into training and testing ##
 from sklearn.model_selection import train_test_split
-X_train, X_test, Y_train, Y_test = train_test_split(X,Y,test_size = 0.2, random_state = 0)
+X_train, X_test, y_train, y_test = train_test_split(X,y,test_size = 0.2, random_state = 0)
 
 # ### Feature Scaling ###
 
@@ -79,13 +79,13 @@ print(X_test)
 from sklearn.linear_model import LinearRegression 
 
 regressor = LinearRegression() 
-model = regressor.fit(X_train, Y_train)
+model = regressor.fit(X_train, y_train)
 
 ### Predicting Test Set results ###
 
 y_pred = regressor.predict(X_test)
 np.set_printoptions(precision = 2) # Display any numerical value with only 2 numebrs after decimal
-print(np.concatenate((y_pred.reshape(len(y_pred),1), Y_test.reshape(len(Y_test),1 )), axis=1)) # this just simply makes everything vertical
+print(np.concatenate((y_pred.reshape(len(y_pred),1), y_test.reshape(len(y_test),1 )), axis=1)) # this just simply makes everything vertical
 
 
 # Model Summary #
